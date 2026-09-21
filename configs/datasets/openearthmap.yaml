@@ -1,0 +1,12 @@
+defaults: ../default.yaml
+dataset:
+  name: openearthmap
+  images:
+    root: ../../datasets/openearthmap/images
+  masks:
+    root: ../../datasets/openearthmap/labels
+  # Original OpenEarthMap: void=0, bareland=1, rangeland=2,
+  # developed space=3, road=4, tree=5, water=6, agriculture=7, building=8.
+  # Verify IDs if using a repackaged release or another OpenEarthMap variant.
+  labels:
+    mapping: {0: 255, 1: 0, 2: 0, 3: 0, 4: 4, 5: 2, 6: 3, 7: 0, 8: 1}

@@ -1,0 +1,4 @@
+-r requirements.txt
+pennylane>=0.40,<0.44
+torchvision>=0.17
+segment-anything @ https://github.com/facebookresearch/segment-anything/archive/dca509fe793f601edb92606367a655c15ac00fdf.zip

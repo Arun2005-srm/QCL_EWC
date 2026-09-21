@@ -1,0 +1,35 @@
+data_loader:
+  batch_size: 1
+  num_workers: 0
+  pin_memory: false
+  seed: 42
+
+dataset:
+  recursive: true
+  images:
+    extensions: [.png, .jpg, .jpeg, .tif, .tiff]
+    scale: 255.0
+  masks:
+    extensions: [.png, .tif, .tiff]
+  pairing:
+    method: stem
+    image_suffix: ""
+    mask_suffix: ""
+  classes: [other, building, tree_woodland, water, road]
+  labels:
+    encoding: index
+    ignore_index: 255
+  split:
+    strategy: group
+    seed: 42
+    ratios: {train: 0.70, val: 0.15, test: 0.15}
+  tiling:
+    enabled: true
+    size: [512, 512]
+    stride: [512, 512]
+  transforms:
+    image_size: [512, 512]
+    normalization: null  # RGB [0,1]; SAM preprocessing belongs in the model.
+    augmentation:
+      horizontal_flip: true
+      vertical_flip: true

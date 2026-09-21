@@ -1,0 +1,16 @@
+defaults: ../default.yaml
+dataset:
+  name: binary_segmentation
+  images:
+    root: ../../datasets/binary/images
+  masks:
+    root: ../../datasets/binary/masks
+  pairing:
+    mask_suffix: _mask
+  classes: [background, foreground]
+  labels:
+    encoding: binary
+    threshold: 127
+    ignore_values: []
+  tiling:
+    enabled: false

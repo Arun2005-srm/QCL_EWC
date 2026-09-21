@@ -1,0 +1,11 @@
+defaults: ../default.yaml
+dataset:
+  name: landcoverai
+  images:
+    root: ../../datasets/landcoverai/images
+  masks:
+    root: ../../datasets/landcoverai/masks
+  labels:
+    mapping: {0: 0, 1: 1, 2: 2, 3: 3, 4: 4}
+  # Use original scenes. For pre-cut tiles, set grouping.regex to capture the
+  # source scene ID, or use a manifest with explicit group and official split.

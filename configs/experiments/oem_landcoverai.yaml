@@ -1,0 +1,23 @@
+tasks:
+  - ../datasets/openearthmap.yaml
+  - ../datasets/landcoverai.yaml
+data_loader:
+  batch_size: 1
+  num_workers: 0
+  pin_memory: true
+  seed: 42
+model:
+  kind: quantum
+  qubits: 4
+  depth: 2
+  grid: 4
+training:
+  epochs_per_task: 5
+  learning_rate: 0.001
+  seed: 42
+ewc:
+  strength: 100.0
+  decay: 1.0
+  scope: all
+  fisher_images: 16
+  fisher_pixels_per_image: 4

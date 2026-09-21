@@ -1,0 +1,9 @@
+defaults: ../default.yaml
+dataset:
+  name: my_dataset
+  images:
+    root: ../../datasets/my_dataset/images
+  masks:
+    root: ../../datasets/my_dataset/masks
+  labels:
+    mapping: {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 255: 255}

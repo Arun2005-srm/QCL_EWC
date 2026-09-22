@@ -1,0 +1,26 @@
+# Run from the repository: python prepare_datasets.py --config configs/preprocess_dgx.yaml --dry-run
+output_root: /raid/workspace/RS_Dataset
+size: [1024, 1024]  # height, width
+resize_mode: stretch  # stretch whole image; optional letterbox preserves aspect ratio
+datasets:
+  openearthmap:
+    source: /raid/workspace/AI4CV/AI4CV_CL_DGX_A100/A100_datasets/openearthmap/OpenEarthMap_wo_xBD
+    # Paths below are relative to this dataset's source directory.
+    split_files: {train: train_available.txt, val: val_available.txt, test: test_available.txt}
+    image_dirs: [images, image, imgs, img]
+    mask_dirs: [masks, mask, labels, label, annotations, ann]
+    image_suffix: ""
+    mask_suffix: ""  # e.g. _mask if labels use image_001_mask.tif
+    label_mapping: {0: 255, 1: 0, 2: 0, 3: 0, 4: 4, 5: 2, 6: 3, 7: 0, 8: 1, 255: 255}
+    # Optional source_manifest: /absolute/path/to/pairs.csv
+    # CSV columns: id,image,mask,group,split (last two optional).
+    # Paths in CSV are relative to the CSV, or absolute. Official partitions
+    # can be supplied here instead of split_files (remove split_files first).
+  landcover_ai:
+    source: /raid/workspace/AI4CV/AI4CV_CL_DGX_A100/A100_datasets/landcover_ai
+    split_files: {train: train.txt, val: val.txt, test: test.txt}
+    image_dirs: [images, image, imgs, img]
+    mask_dirs: [masks, mask, labels, label, annotations, ann]
+    image_suffix: ""
+    mask_suffix: ""
+    label_mapping: {0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 255: 255}

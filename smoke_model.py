@@ -17,12 +17,15 @@ def main():
     parser.add_argument("--random-sam", action="store_true", help="Test full SAM architecture with random weights; not a pretrained test")
     parser.add_argument("--device", choices=["cpu", "cuda"], default="cpu")
     parser.add_argument("--two-task", action="store_true", help="Also train/evaluate two tiny synthetic tasks and save EWC/checkpoints")
+    parser.add_argument("--visualize", action="store_true", help="Save labeled predictions after each task (requires --two-task)")
     parser.add_argument("--output", default="outputs/model_smoke.json")
     args = parser.parse_args()
     if args.sam_checkpoint and args.random_sam:
         parser.error("Choose a pretrained checkpoint OR --random-sam")
     if args.two_task and not (args.sam_checkpoint or args.random_sam):
         parser.error("--two-task requires --sam-checkpoint or --random-sam")
+    if args.visualize and not args.two_task:
+        parser.error("--visualize requires --two-task")
     if args.device == "cuda" and not torch.cuda.is_available():
         parser.error("CUDA requested but unavailable")
     torch.manual_seed(42)
@@ -79,6 +82,17 @@ def main():
         stream = run_training(experiment, tasks, model, output.parent / "smoke_stream", torch.device(args.device),
                               file_hash(args.sam_checkpoint) if args.sam_checkpoint else "random-sam-smoke")
         result["two_task_matrix_shape"] = [len(row) for row in stream["matrix"]]
+        if args.visualize:
+            from data import build_records
+            from data.dataset import SegmentationDataset
+            from continual.visualization import save_smoke_comparison
+            cfg = tasks[0]["dataset"]
+            dataset = SegmentationDataset(build_records(cfg)["test"], cfg)
+            states = [torch.load(output.parent / "smoke_stream" / f"task_{i:02d}.pt", map_location="cpu", weights_only=True)["model"] for i in range(2)]
+            preview = output.parent / "smoke_comparison.png"
+            save_smoke_comparison(model, dataset, args.device, states, stream["matrix"], preview,
+                                  pretrained=bool(args.sam_checkpoint))
+            result["visualization"] = str(preview.resolve())
         result["elapsed_seconds"] = time.perf_counter() - started
     output.write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2))

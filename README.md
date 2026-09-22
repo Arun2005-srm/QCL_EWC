@@ -185,6 +185,15 @@ This verifies real pretrained SAM forward/backward gradients, two small syntheti
 python smoke_model.py --device cpu --random-sam --two-task
 ```
 
+Add `--visualize` to save a labeled image/ground-truth/prediction comparison:
+
+```bash
+python smoke_model.py --device cpu --random-sam --two-task --visualize \
+  --output outputs/visual_smoke/report.json
+```
+
+The same held-out example is shown after each task in `smoke_comparison.png`.
+
 The command explicitly reports random weights; it never silently substitutes them for missing pretrained weights. Synthetic smoke assets are saved under the output directory. Do not use their checkpoints as research-trained models.
 
 ## Train, compare, resume, and evaluate

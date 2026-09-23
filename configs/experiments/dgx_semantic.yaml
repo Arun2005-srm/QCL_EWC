@@ -1,0 +1,33 @@
+# Research starting configuration, not a claim of HQF-Net performance.
+tasks:
+  - /raid/workspace/RS_Dataset/native512/openearthmap/dataset.yaml
+  - /raid/workspace/RS_Dataset/native512/landcover_ai/dataset.yaml
+data_loader:
+  batch_size: 2
+  num_workers: 2
+  persistent_workers: false
+  pin_memory: true
+  seed: 42
+model:
+  decoder: semantic
+  decoder_width: 64
+  encoder_batch_size: 1
+  kind: quantum
+  qubits: 4
+  depth: 2
+  grid: 8
+  gated: true
+training:
+  epochs_per_task: 100
+  learning_rate: 0.0003
+  optimizer: adamw
+  weight_decay: 0.0001
+  schedule: cosine
+  warmup_epochs: 5
+  seed: 42
+ewc:
+  strength: 100.0
+  decay: 1.0
+  scope: all
+  fisher_images: 32
+  fisher_pixels_per_image: 8

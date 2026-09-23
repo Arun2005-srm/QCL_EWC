@@ -1,6 +1,7 @@
 """Sequential dataset training for shared SAM alignment with optional EWC."""
 import argparse
 import json
+import math
 from pathlib import Path
 import time
 
@@ -41,11 +42,24 @@ def run_training(experiment, tasks, model, output, device, sam_hash, resume=None
     seed = training.get("seed", 42)
     if epochs < 1:
         raise ValueError("epochs_per_task must be positive")
-    if any(c.get("data_loader", {}).get("num_workers", 0) != 0 for c in tasks):
-        raise ValueError("Training v1 uses num_workers=0 for reproducible epoch-boundary resume; data validation supports workers")
+    optimizer_kind = training.get("optimizer", "adam")
+    schedule = training.get("schedule", "constant")
+    if optimizer_kind not in {"adam", "adamw"} or schedule not in {"constant", "cosine"}:
+        raise ValueError("Use optimizer adam/adamw and schedule constant/cosine")
+    if any(c.get("data_loader", {}).get("num_workers", 0) > 0
+           and c.get("data_loader", {}).get("persistent_workers", False) for c in tasks):
+        raise ValueError("Training requires persistent_workers=false so worker RNG resets reproducibly at epoch boundaries")
     settings = experiment.get("ewc", {})
     ewc = OnlineEWC(settings.get("strength", 100), settings.get("decay", 1), settings.get("scope", "all"))
     specs = {"experiment": experiment, "tasks": tasks, "sam_sha256": sam_hash}
+    print("Active model: " + json.dumps({
+        "decoder": getattr(model, "decoder_kind", type(model).__name__),
+        "alignment": experiment.get("model", {}).get("kind", "quantum"),
+        "trainable_parameters": sum(p.numel() for p in model.parameters() if p.requires_grad),
+        "optimizer": optimizer_kind, "base_learning_rate": training.get("learning_rate", .001),
+        "warmup_epochs": training.get("warmup_epochs", 0), "schedule": schedule,
+        "epochs_per_task": epochs,
+    }), flush=True)
     model.to(device)
     saved = torch.load(resume, map_location="cpu", weights_only=True) if resume else None
     start_task, start_epoch, history, matrix, best_score, best_state = 0, 0, [], [], -1., None
@@ -89,7 +103,10 @@ def run_training(experiment, tasks, model, output, device, sam_hash, resume=None
 
     for task_index in range(start_task, len(tasks)):
         torch.manual_seed(seed + task_index)
-        optimizer = torch.optim.Adam((p for p in model.parameters() if p.requires_grad), lr=training.get("learning_rate", .001))
+        optimizer_cls = torch.optim.AdamW if optimizer_kind == "adamw" else torch.optim.Adam
+        base_lr = training.get("learning_rate", .001)
+        optimizer = optimizer_cls((p for p in model.parameters() if p.requires_grad), lr=base_lr,
+                                  weight_decay=training.get("weight_decay", 0.))
         current = loaders[task_index]
         task_name = tasks[task_index]["dataset"]["name"]
         print(f"\nTask {task_index + 1}/{len(tasks)}: {task_name} | "
@@ -106,12 +123,26 @@ def run_training(experiment, tasks, model, output, device, sam_hash, resume=None
                 if saved["loader_rng"] is not None:
                     current["train"].generator.set_state(saved["loader_rng"])
         for epoch in range(epoch_start, epochs):
+            warmup = training.get("warmup_epochs", 0)
+            if warmup < 0 or warmup >= epochs:
+                raise ValueError("warmup_epochs must be >=0 and less than epochs_per_task")
+            if epoch < warmup:
+                lr = base_lr * (epoch + 1) / warmup
+            elif schedule == "cosine":
+                fraction = (epoch - warmup) / max(1, epochs - warmup - 1)
+                lr = base_lr * (.05 + .95 * .5 * (1 + math.cos(math.pi * fraction)))
+            else:
+                lr = base_lr
+            for group in optimizer.param_groups:
+                group["lr"] = lr
+            print(f"Epoch {epoch + 1}/{epochs}: learning_rate={lr:.8g}; "
+                  "bar metrics are cumulative training predictions, not validation scores", flush=True)
             model.train()
             loss_sum, steps = 0., 0
             seg_sum, penalty_sum, samples = 0., 0., 0
             train_metric = Confusion(classes, ignore)
-            progress = tqdm(current["train"], desc=f"{task_name} epoch {epoch + 1}/{epochs} train",
-                            unit="batch", dynamic_ncols=True)
+            progress = tqdm(current["train"], desc=f"Train T{task_index + 1} E{epoch + 1}/{epochs}",
+                            unit="batch", dynamic_ncols=False, ncols=160)
             for batch in progress:
                 if not (batch["mask"] != ignore).any():
                     continue
@@ -144,13 +175,13 @@ def run_training(experiment, tasks, model, output, device, sam_hash, resume=None
             train_metrics.update(loss=seg_sum / samples, ewc_penalty=penalty_sum / samples,
                                  total_loss=(seg_sum + penalty_sum) / samples)
             validation = evaluate(model, current["val"], device, classes, ignore,
-                                  description=f"{task_name} epoch {epoch + 1}/{epochs} val")
+                                  description=f"Val T{task_index + 1} E{epoch + 1}/{epochs}")
             score = validation["miou"]
             if score is None:
                 raise ValueError("Validation split has no valid labeled pixels")
             if score > best_score:
                 best_score, best_state = score, model.trainable_state()
-            entry = {"task": task_index, "epoch": epoch + 1, "loss": loss_sum / steps,
+            entry = {"task": task_index, "epoch": epoch + 1, "learning_rate": lr, "loss": loss_sum / steps,
                      "training": train_metrics, "validation": validation}
             history.append(entry)
             print(f"Epoch {epoch + 1}/{epochs} | {task_name}\n"

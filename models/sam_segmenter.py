@@ -5,6 +5,7 @@ from torch import nn
 import torch.nn.functional as F
 
 from .alignment import SpatialAlignment
+from .semantic_decoder import SemanticDecoder
 
 
 class UniversalSAM(nn.Module):
@@ -14,7 +15,8 @@ class UniversalSAM(nn.Module):
     Class prompts are learned embeddings, not ground-truth-derived prompts.
     """
 
-    def __init__(self, classes, checkpoint=None, *, kind="quantum", qubits=4, depth=2, grid=4, sam=None):
+    def __init__(self, classes, checkpoint=None, *, kind="quantum", qubits=4, depth=2, grid=4, sam=None,
+                 decoder="prompt", decoder_width=64, gated=False, encoder_batch_size=0):
         super().__init__()
         if sam is None:
             if checkpoint is None or not Path(checkpoint).is_file():
@@ -24,8 +26,16 @@ class UniversalSAM(nn.Module):
             sam.load_state_dict(torch.load(checkpoint, map_location="cpu", weights_only=True))
         self.sam = sam.eval()
         self.sam.requires_grad_(False)
-        self.alignment = SpatialAlignment(qubits=qubits, depth=depth, grid=grid, kind=kind)
-        self.class_prompts = nn.Parameter(torch.randn(classes, 1, 256) * .02)
+        if decoder not in {"prompt", "semantic"}:
+            raise ValueError("decoder must be prompt or semantic")
+        if type(encoder_batch_size) is not int or encoder_batch_size < 0:
+            raise ValueError("encoder_batch_size must be a nonnegative integer")
+        self.decoder_kind, self.encoder_batch_size = decoder, encoder_batch_size
+        self.alignment = SpatialAlignment(qubits=qubits, depth=depth, grid=grid, kind=kind, gated=gated)
+        if decoder == "semantic":
+            self.semantic_decoder = SemanticDecoder(classes, decoder_width)
+        else:
+            self.class_prompts = nn.Parameter(torch.randn(classes, 1, 256) * .02)
 
     def train(self, mode=True):
         super().train(mode)
@@ -42,10 +52,18 @@ class UniversalSAM(nn.Module):
         with torch.no_grad():
             resized = F.interpolate(images * 255, resized_size, mode="bilinear", align_corners=False, antialias=True)
             prepared = torch.stack([self.sam.preprocess(image) for image in resized])
-            embeddings = self.sam.image_encoder(prepared)
-            _, dense = self.sam.prompt_encoder(points=None, boxes=None, masks=None)
-            position = self.sam.prompt_encoder.get_dense_pe()
+            chunk = self.encoder_batch_size or len(prepared)
+            embeddings = torch.cat([self.sam.image_encoder(part) for part in prepared.split(chunk)])
+            if self.decoder_kind == "prompt":
+                _, dense = self.sam.prompt_encoder(points=None, boxes=None, masks=None)
+                position = self.sam.prompt_encoder.get_dense_pe()
         embeddings = self.alignment(embeddings)
+        if self.decoder_kind == "semantic":
+            # Remove SAM's bottom/right padding before fusing with original RGB.
+            eh, ew = embeddings.shape[-2:]
+            valid_h = max(1, round(eh * resized_size[0] / target))
+            valid_w = max(1, round(ew * resized_size[1] / target))
+            return self.semantic_decoder(embeddings[..., :valid_h, :valid_w], images)
         outputs = []
         for embedding in embeddings:
             logits, _ = self.sam.mask_decoder(

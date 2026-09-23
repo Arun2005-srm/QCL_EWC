@@ -1,0 +1,4 @@
+# Uses the already prepared 1024x1024 data. No preprocessing is required.
+defaults: dgx_semantic_landcover.yaml
+tasks:
+  - /raid/workspace/RS_Dataset/configs/landcover_ai.yaml

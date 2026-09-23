@@ -16,6 +16,7 @@ def main():
     parser.add_argument("--sam-checkpoint", help="Official SAM ViT-B checkpoint")
     parser.add_argument("--random-sam", action="store_true", help="Test full SAM architecture with random weights; not a pretrained test")
     parser.add_argument("--device", choices=["cpu", "cuda"], default="cpu")
+    parser.add_argument("--decoder", choices=["prompt", "semantic"], default="prompt")
     parser.add_argument("--two-task", action="store_true", help="Also train/evaluate two tiny synthetic tasks and save EWC/checkpoints")
     parser.add_argument("--visualize", action="store_true", help="Save labeled predictions after each task (requires --two-task)")
     parser.add_argument("--output", default="outputs/model_smoke.json")
@@ -36,7 +37,8 @@ def main():
         if args.random_sam:
             from segment_anything import sam_model_registry
             sam = sam_model_registry["vit_b"](checkpoint=None)
-        model = UniversalSAM(5, args.sam_checkpoint, sam=sam).to(args.device)
+        model = UniversalSAM(5, args.sam_checkpoint, sam=sam, decoder=args.decoder,
+                             gated=args.decoder == "semantic").to(args.device)
         image = torch.rand(1, 3, 64, 64, device=args.device)
         mask = torch.randint(0, 5, (1, 64, 64), device=args.device)
         logits = model(image)
@@ -53,7 +55,7 @@ def main():
     if full:
         assert all(p.grad is None and not p.requires_grad for p in model.sam.parameters())
     result = {"status": "passed", "test": "pretrained SAM ViT-B" if args.sam_checkpoint else ("random-weight SAM ViT-B architecture" if args.random_sam else "quantum alignment only"),
-              "device": args.device, "shape": list(logits.shape), "loss": float(loss.detach().cpu()),
+              "device": args.device, "decoder": args.decoder, "shape": list(logits.shape), "loss": float(loss.detach().cpu()),
               "gradient_l1": grads, "elapsed_seconds": time.perf_counter() - started}
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -76,7 +78,8 @@ def main():
             cfg["dataset"].update(name=f"synthetic_{index}", manifest=str(manifest.resolve()), split={"strategy": "manifest"})
             cfg["dataset"]["tiling"]["enabled"] = False
             tasks.append(cfg)
-        experiment = {"model": {"kind": "quantum", "qubits": 4, "depth": 2, "grid": 4},
+        experiment = {"model": {"kind": "quantum", "qubits": 4, "depth": 2, "grid": 4,
+                                "decoder": args.decoder, "gated": args.decoder == "semantic"},
                       "training": {"epochs_per_task": 1, "seed": 42},
                       "ewc": {"strength": 100., "fisher_images": 1, "fisher_pixels_per_image": 1}}
         stream = run_training(experiment, tasks, model, output.parent / "smoke_stream", torch.device(args.device),

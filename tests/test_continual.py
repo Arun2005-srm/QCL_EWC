@@ -108,12 +108,13 @@ def test_evaluate_reports_loss_without_gradients():
     assert all(p.grad is None for p in model.parameters())
 
 
-def test_two_task_training_and_resume(tmp_path):
+@pytest.mark.parametrize("settings", [{}, {"optimizer": "adamw", "schedule": "cosine", "weight_decay": .0001}])
+def test_two_task_training_and_resume(tmp_path, settings):
     tasks = [load_config(make_fixture(tmp_path / name)) for name in ("one", "two")]
     for i, cfg in enumerate(tasks):
         cfg["dataset"]["name"] = str(i)
         cfg["dataset"]["tiling"]["enabled"] = False
-    experiment = {"training": {"epochs_per_task": 1, "seed": 42},
+    experiment = {"training": {"epochs_per_task": 1, "seed": 42, **settings},
                   "ewc": {"strength": 1., "fisher_images": 1, "fisher_pixels_per_image": 2}}
     torch.manual_seed(42)
     original = TinySegmenter()
@@ -166,3 +167,37 @@ def test_continuation_rejects_changed_protocol_and_incomplete_task():
     saved["epoch"] = 1
     with pytest.raises(ValueError, match="completed"):
         validate_continuation(saved, new)
+
+
+def test_two_workers_epoch_resume_matches_uninterrupted(tmp_path, monkeypatch):
+    import train
+    task = load_config(make_fixture(tmp_path / "data"))
+    task["dataset"]["tiling"]["enabled"] = False
+    task["dataset"]["transforms"]["augmentation"] = {
+        "horizontal_flip": True, "vertical_flip": True}
+    task["data_loader"].update(num_workers=2, persistent_workers=False, batch_size=2)
+    experiment = {"training": {"epochs_per_task": 2, "seed": 42},
+                  "ewc": {"strength": 1., "fisher_images": 1, "fisher_pixels_per_image": 1}}
+    boundary = tmp_path / "epoch_one.pt"
+    original_save = train.atomic_save
+
+    def save_boundary(state, path):
+        original_save(state, path)
+        if state["task"] == 0 and state["epoch"] == 1:
+            original_save(state, boundary)
+
+    monkeypatch.setattr(train, "atomic_save", save_boundary)
+    torch.manual_seed(42)
+    model = TinySegmenter()
+    full = run_training(experiment, [task], model, tmp_path / "full", torch.device("cpu"), "sam")
+    resumed = TinySegmenter()
+    again = run_training(experiment, [task], resumed, tmp_path / "resumed", torch.device("cpu"), "sam", boundary)
+    assert again["history"] == full["history"]
+    assert again["matrix"] == full["matrix"]
+    assert all(torch.equal(p, resumed.state_dict()[n]) for n, p in model.state_dict().items())
+
+
+def test_training_rejects_persistent_workers(tmp_path):
+    task = {"data_loader": {"num_workers": 2, "persistent_workers": True}}
+    with pytest.raises(ValueError, match="persistent_workers=false"):
+        run_training({}, [task], TinySegmenter(), tmp_path, torch.device("cpu"), "sam")

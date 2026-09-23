@@ -47,3 +47,14 @@ starts. If a run already has last.pt, resume with the same config and output:
 `--resume outputs/dgx_oem_then_landcover/last.pt`. Resume restores the last saved
 epoch boundary, not a partially completed epoch. Existing histories do not gain
 metrics that were not collected by the old code.
+
+## Multiple data-loader workers
+
+Training supports num_workers: 2 (or 4) with persistent_workers: false.
+Workers use the spawn start method so they do not inherit the main process CUDA
+state. Each epoch starts fresh workers seeded by the training loader generator,
+whose state is included in epoch checkpoints. Keep the loader configuration
+unchanged when resuming. The multiprocessing test checks identical epoch metrics
+and final weights after a two-worker epoch-boundary resume with random flips.
+This verifies CPU behavior; GPU execution may still have nondeterministic kernels.
+Workers read images on the CPU; the main process moves completed batches to CUDA.

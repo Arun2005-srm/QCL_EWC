@@ -85,7 +85,7 @@ def evaluate(model, loader, device, classes, ignore_index=255, description="Eval
     model.eval()
     metric = Confusion(classes, ignore_index)
     loss_sum, samples = 0., 0
-    with tqdm(loader, desc=description, unit="batch", dynamic_ncols=True) as progress:
+    with tqdm(loader, desc=description, unit="batch", dynamic_ncols=False, ncols=160) as progress:
         for batch in progress:
             mask = batch["mask"].to(device)
             logits = model(batch["image"].to(device))

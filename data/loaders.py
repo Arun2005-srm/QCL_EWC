@@ -26,6 +26,8 @@ def build_dataloaders(dataset_cfg, loader_cfg=None, *, records=None):
     loader_cfg = loader_cfg or {}
     records = build_records(dataset_cfg) if records is None else records
     workers = loader_cfg.get("num_workers", 0)
+    if not isinstance(workers, int) or isinstance(workers, bool) or workers < 0:
+        raise ValueError("num_workers must be a nonnegative integer")
     seed = loader_cfg.get("seed", dataset_cfg.get("split", {}).get("seed", 42))
     # Also seed transforms executed in the main process (num_workers=0).
     torch.manual_seed(seed)
@@ -39,6 +41,9 @@ def build_dataloaders(dataset_cfg, loader_cfg=None, *, records=None):
             num_workers=workers, pin_memory=loader_cfg.get("pin_memory", False),
             persistent_workers=workers > 0 and loader_cfg.get("persistent_workers", False),
             worker_init_fn=seed_worker, generator=generator, drop_last=False,
+            # Workers start after the model is on CUDA; avoid inheriting CUDA
+            # state through Linux fork. Fresh workers get saved-generator seeds.
+            **({"multiprocessing_context": "spawn"} if workers > 0 else {}),
         )
     return loaders
 

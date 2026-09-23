@@ -1,0 +1,6 @@
+# Establish single-dataset performance before assessing EWC or cross-task transfer.
+defaults: dgx_semantic.yaml
+tasks:
+  - /raid/workspace/RS_Dataset/native512/landcover_ai/dataset.yaml
+ewc:
+  strength: 0.0

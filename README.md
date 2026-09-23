@@ -224,7 +224,7 @@ Use distinct output directories for these four comparisons:
 
 The classical baseline preserves the four-value bottleneck and coarse grid; it is not exactly parameter-count matched. Report parameter counts and timing. Repeat with `--seed 42`, `43`, `44`; scene split seeds remain fixed so the compared data partitions are identical. EWC strength 100 and five epochs per task are starting settings, not tuned research recommendations; tune on validation data only.
 
-Each epoch saves `last.pt`; each task saves `task_XX.pt` after restoring its best validation-mIoU parameters and consolidating EWC. The next task receives a new optimizer. Resume is supported at epoch boundaries with `num_workers: 0`; changed configurations, SAM checkpoint hashes, or discovered scene partitions are rejected. Dataset file contents are not hashed: keep the underlying files unchanged when resuming. The pretrained SAM weights are external and are not duplicated in training checkpoints.
+Each epoch saves `last.pt`; each task saves `task_XX.pt` after restoring its best validation-mIoU parameters and consolidating EWC. The next task receives a new optimizer. Resume is supported at epoch boundaries with zero or multiple data-loader workers (`persistent_workers: false`); changed configurations, SAM checkpoint hashes, or discovered scene partitions are rejected. Dataset file contents are not hashed: keep the underlying files unchanged when resuming. The pretrained SAM weights are external and are not duplicated in training checkpoints.
 
 `metrics.json` includes per-class IoU, five-class and foreground mIoU, Dice, confusion matrices, the lower-triangular task performance matrix, old-task forgetting, epoch history, parameter count, elapsed time, and peak GPU allocation. Classes with no union are omitted from mIoU rather than scored as perfect. Forgetting is the best earlier mIoU minus final mIoU; negative values represent improvement. No accuracy target or quantum advantage is asserted by the smoke tests.
 
@@ -245,3 +245,24 @@ python -m pytest -q
 ```
 
 Quantum tests skip if optional PennyLane dependencies are absent. Data-only commands do not import SAM or PennyLane. Generated outputs, datasets, virtual environments, and checkpoints are excluded from Git. Nothing is pushed automatically.
+
+
+## Semantic decoder upgrade and result reporting
+
+The upgraded SAM + quantum model is tracked directly under `models/`; ZIPs under
+`releases/` are historical snapshots and should not overwrite newer source.
+See [SEMANTIC_UPGRADE.md](SEMANTIC_UPGRADE.md) for the semantic decoder and configs.
+The original prompt model remains the default for old configurations.
+
+For existing prepared datasets, use
+`configs/experiments/dgx_semantic_sequential_existing.yaml` (OpenEarthMap then
+LandCover.ai, replay-free EWC). This config requires no new preprocessing.
+Changes to model or training settings require a separate run rather than resuming
+an incompatible checkpoint. The current eight-qubit experiment is not a verified
+SOTA result. Check dataset overlap and evaluation protocol before comparisons.
+
+`verify_learning.py` checks learning on training scenes and separate validation
+scenes. `inspect_training_run.py` reports saved effective settings. Install
+`requirements-report.txt` for `results_report.py` and `full_results.ipynb`.
+Reporting consumes saved metrics and panels; select the evaluation JSON for the
+checkpoint you actually want to report. No replay mechanism is implemented.

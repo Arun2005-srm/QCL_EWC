@@ -1,0 +1,14 @@
+# Existing prepared datasets; no preprocessing required.
+defaults: dgx_semantic.yaml
+tasks:
+  - /raid/workspace/RS_Dataset/configs/openearthmap.yaml
+  - /raid/workspace/RS_Dataset/configs/landcover_ai.yaml
+data_loader:
+  batch_size: 8
+  num_workers: 2
+  persistent_workers: false
+model:
+  qubits: 8
+training:
+  epochs_per_task: 20
+  warmup_epochs: 1
